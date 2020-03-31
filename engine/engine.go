@@ -1,17 +1,18 @@
 package engine
 
 import (
+	"log"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/parsaaes/jasoos-telegram-bot/message"
 	"github.com/parsaaes/jasoos-telegram-bot/room"
 	"github.com/sirupsen/logrus"
-	"log"
 )
 
 type Engine struct {
 	Bot      *tgbotapi.BotAPI
 	RoomList map[int64]*room.Room
-	SendChan chan message.Message
+	SendChan chan tgbotapi.MessageConfig
 }
 
 func New(token string) (*Engine, error) {
@@ -23,7 +24,7 @@ func New(token string) (*Engine, error) {
 	return &Engine{
 		Bot:      bot,
 		RoomList: make(map[int64]*room.Room),
-		SendChan: make(chan message.Message),
+		SendChan: make(chan tgbotapi.MessageConfig),
 	}, nil
 }
 
@@ -72,8 +73,6 @@ func (e *Engine) Run() {
 
 func (e *Engine) SendHandler() {
 	for msg := range e.SendChan {
-		msg := tgbotapi.NewMessage(msg.ChatID, msg.Text)
-
 		if _, err := e.Bot.Send(msg); err != nil {
 			logrus.Errorf("engine: cannot send message: %s", err.Error())
 		}
