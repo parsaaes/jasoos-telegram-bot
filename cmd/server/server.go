@@ -1,8 +1,12 @@
 package server
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/parsaaes/jasoos-telegram-bot/config"
+	"github.com/spf13/cobra"
+)
 
-func Cmd() *cobra.Command {
+// Cmd create server command
+func Cmd(cfg config.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "server",
 		Short: "start the game server",
