@@ -20,7 +20,7 @@ type Room struct {
 }
 
 // Created must be called on the room creation
-func (r Room) Created() {
+func (r *Room) Created() {
 	// first member of members slice is a user who creates the game
 	msg := tgbotapi.NewMessage(
 		r.ChatID,
@@ -38,18 +38,22 @@ func (r Room) Created() {
 	r.SendChan <- msg
 }
 
-func (r Room) Joined(join message.JoinCallback) {
+func (r *Room) Joined(from *tgbotapi.User, base *tgbotapi.Message) {
+	if from == nil || base == nil {
+		return
+	}
+
 	r.Members = append(r.Members, &Member{
-		Name: join.Username,
-		ID:   join.UserID,
+		Name: from.UserName,
+		ID:   from.ID,
 	})
 
 	msg := tgbotapi.EditMessageTextConfig{
 		BaseEdit: tgbotapi.BaseEdit{
 			ChatID:    r.ChatID,
-			MessageID: join.MessageID,
+			MessageID: base.MessageID,
 		},
-		Text: fmt.Sprintf("%s\n %s has joined.", join.LastMessage, join.Username),
+		Text: fmt.Sprintf("%s\n %s has joined.", base.Text, from.UserName),
 	}
 
 	r.SendChan <- msg

@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"encoding/json"
 	"log"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
@@ -34,7 +33,7 @@ func (e *Engine) Run() {
 
 	bot.Debug = true
 
-	go e.SendHandler()
+	go e.Sender()
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
@@ -50,28 +49,15 @@ func (e *Engine) Run() {
 	for update := range updates {
 		if update.Message != nil {
 			if update.Message.Chat.IsGroup() || update.Message.Chat.IsSuperGroup() {
-
 				updateRoom, roomExists := e.RoomList[update.Message.Chat.ID]
 
 				if update.CallbackQuery != nil {
 					if roomExists {
-						var callback message.Callback
-						if err := json.Unmarshal([]byte(update.CallbackQuery.Data), &callback); err != nil {
-							logrus.Errorf("engine: callback: cannot unmarshal update callback data: %s", err.Error())
-						}
+						callback := update.CallbackQuery
 
-						switch callback.Type {
-						case message.JoinCallbackType:
-							var join message.JoinCallback
-
-							if err := json.Unmarshal([]byte(update.CallbackQuery.Data), &join); err != nil {
-								logrus.Errorf("engine: callback: cannot unmarshal update callback data (join): %s", err.Error())
-							}
-
-							updateRoom.Joined(join)
-
-							break
-
+						switch callback.Data {
+						case message.Join:
+							updateRoom.Joined(callback.From, callback.Message)
 						}
 					}
 				}
@@ -82,25 +68,26 @@ func (e *Engine) Run() {
 						r := &room.Room{
 							ChatID: update.Message.Chat.ID,
 							State:  room.Join,
-							Members: []*room.Member{&room.Member{
-								Name: update.Message.From.String(),
-								ID:   update.Message.From.ID,
-							}},
+							Members: []*room.Member{
+								&room.Member{
+									Name: update.Message.From.String(),
+									ID:   update.Message.From.ID,
+								},
+							},
 							SendChan: e.SendChan,
 						}
 						e.RoomList[update.Message.Chat.ID] = r
 
 						r.Created()
 					}
-					break
 				}
-
 			}
 		}
 	}
 }
 
-func (e *Engine) SendHandler() {
+// Sender ranges over send channel and sends messages
+func (e *Engine) Sender() {
 	for msg := range e.SendChan {
 		if _, err := e.Bot.Send(msg); err != nil {
 			logrus.Errorf("engine: cannot send message: %s", err.Error())
