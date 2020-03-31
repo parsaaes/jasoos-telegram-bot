@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"encoding/json"
 	"log"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
@@ -12,7 +13,7 @@ import (
 type Engine struct {
 	Bot      *tgbotapi.BotAPI
 	RoomList map[int64]*room.Room
-	SendChan chan tgbotapi.MessageConfig
+	SendChan chan tgbotapi.Chattable
 }
 
 func New(token string) (*Engine, error) {
@@ -24,7 +25,7 @@ func New(token string) (*Engine, error) {
 	return &Engine{
 		Bot:      bot,
 		RoomList: make(map[int64]*room.Room),
-		SendChan: make(chan tgbotapi.MessageConfig),
+		SendChan: make(chan tgbotapi.Chattable),
 	}, nil
 }
 
@@ -47,25 +48,53 @@ func (e *Engine) Run() {
 	}
 
 	for update := range updates {
-		if update.Message == nil { // ignore any non-Message Updates
-			continue
-		}
+		if update.Message != nil {
+			if update.Message.Chat.IsGroup() || update.Message.Chat.IsSuperGroup() {
 
-		if update.Message.Chat.IsGroup() || update.Message.Chat.IsSuperGroup() {
-			switch update.Message.Command() {
-			case message.New:
-				if _, exists := e.RoomList[update.Message.Chat.ID]; !exists {
-					r := &room.Room{
-						ChatID:   update.Message.Chat.ID,
-						State:    room.Join,
-						Members:  []*tgbotapi.User{update.Message.From},
-						SendChan: e.SendChan,
+				updateRoom, roomExists := e.RoomList[update.Message.Chat.ID]
+
+				if update.CallbackQuery != nil {
+					if roomExists {
+						var callback message.Callback
+						if err := json.Unmarshal([]byte(update.CallbackQuery.Data), &callback); err != nil {
+							logrus.Errorf("engine: callback: cannot unmarshal update callback data: %s", err.Error())
+						}
+
+						switch callback.Type {
+						case message.JoinCallbackType:
+							var join message.JoinCallback
+
+							if err := json.Unmarshal([]byte(update.CallbackQuery.Data), &join); err != nil {
+								logrus.Errorf("engine: callback: cannot unmarshal update callback data (join): %s", err.Error())
+							}
+
+							updateRoom.Joined(join)
+
+							break
+
+						}
 					}
-					e.RoomList[update.Message.Chat.ID] = r
-
-					r.Created()
 				}
-				break
+
+				switch update.Message.Command() {
+				case message.New:
+					if !roomExists {
+						r := &room.Room{
+							ChatID: update.Message.Chat.ID,
+							State:  room.Join,
+							Members: []*room.Member{&room.Member{
+								Name: update.Message.From.String(),
+								ID:   update.Message.From.ID,
+							}},
+							SendChan: e.SendChan,
+						}
+						e.RoomList[update.Message.Chat.ID] = r
+
+						r.Created()
+					}
+					break
+				}
+
 			}
 		}
 	}
