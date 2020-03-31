@@ -47,39 +47,38 @@ func (e *Engine) Run() {
 	}
 
 	for update := range updates {
-		if update.Message != nil {
-			if update.Message.Chat.IsGroup() || update.Message.Chat.IsSuperGroup() {
-				updateRoom, roomExists := e.RoomList[update.Message.Chat.ID]
 
-				if update.CallbackQuery != nil {
-					if roomExists {
-						callback := update.CallbackQuery
+		if update.CallbackQuery != nil {
+			callback := update.CallbackQuery
 
-						switch callback.Data {
-						case message.Join:
-							updateRoom.Joined(callback.From, callback.Message)
-						}
-					}
+			r, ok := e.RoomList[callback.Message.Chat.ID]
+			if ok {
+				switch callback.Data {
+				case message.Join:
+					r.Joined(callback.From, callback.Message)
 				}
 
-				switch update.Message.Command() {
-				case message.New:
-					if !roomExists {
-						r := &room.Room{
-							ChatID: update.Message.Chat.ID,
-							State:  room.Join,
-							Members: []*room.Member{
-								&room.Member{
-									Name: update.Message.From.String(),
-									ID:   update.Message.From.ID,
-								},
-							},
-							SendChan: e.SendChan,
-						}
-						e.RoomList[update.Message.Chat.ID] = r
+			}
+		}
 
-						r.Created()
+		if update.Message != nil {
+			switch update.Message.Command() {
+			case message.New:
+				if _, ok := e.RoomList[update.Message.Chat.ID]; !ok {
+					r := &room.Room{
+						ChatID: update.Message.Chat.ID,
+						State:  room.Join,
+						Members: []*room.Member{
+							&room.Member{
+								Name: update.Message.From.String(),
+								ID:   update.Message.From.ID,
+							},
+						},
+						SendChan: e.SendChan,
 					}
+					e.RoomList[update.Message.Chat.ID] = r
+
+					r.Created()
 				}
 			}
 		}
