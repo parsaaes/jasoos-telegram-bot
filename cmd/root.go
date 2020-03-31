@@ -12,7 +12,7 @@ import (
 func Execute() {
 	cmd := &cobra.Command{
 		Use:   "jasoos-telegram-bot",
-		Short: "jasoos telegram bot server",
+		Short: "jasoos telegram bot",
 	}
 
 	cfg := config.New()

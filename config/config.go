@@ -1,13 +1,13 @@
 package config
 
 import (
+	"github.com/knadh/koanf/providers/structs"
 	"strings"
 
 	"github.com/knadh/koanf"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
-	"github.com/knadh/koanf/providers/structs"
 	"github.com/sirupsen/logrus"
 )
 
@@ -29,14 +29,14 @@ func New() Config {
 
 	k := koanf.New(".")
 
-	// load default configuration from file
-	if err := k.Load(structs.Provider(Default(), "konaf"), nil); err != nil {
-		logrus.Fatalf("error loading default: %s", err)
-	}
-
 	// load configuration from file
 	if err := k.Load(file.Provider("config.yml"), yaml.Parser()); err != nil {
 		logrus.Errorf("error loading config.yml: %s", err)
+
+		// load default configuration from file
+		if err := k.Load(structs.Provider(Default(), "konaf"), nil); err != nil {
+			logrus.Fatalf("error loading default: %s", err)
+		}
 	}
 
 	// load environment variables
