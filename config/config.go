@@ -19,7 +19,7 @@ const (
 type (
 	// Config holds all configurations
 	Config struct {
-		Token string
+		Token string `koanf:"token"`
 	}
 )
 
