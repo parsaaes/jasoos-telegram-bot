@@ -6,8 +6,3 @@ const (
 	// Join joins the sender to the room
 	Join = "join"
 )
-
-type Message struct {
-	ChatID int64
-	Text   string
-}
