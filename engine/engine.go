@@ -96,7 +96,7 @@ func (e *Engine) handleMessage(msg *tgbotapi.Message) {
 			}
 			e.RoomList[msg.Chat.ID] = r
 
-			e.RoomTerminator(msg.Chat.ID, done)
+			go e.RoomTerminator(msg.Chat.ID, done)
 
 			r.Created()
 		}
