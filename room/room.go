@@ -16,6 +16,9 @@ const JoinDuration = 60
 // DiscussionDuration in minutes
 const DiscussionDuration = 3
 
+// VoteDuration in minutes
+const VoteDuration = 3
+
 // Member represents a member of a game room
 type Member struct {
 	Name string
@@ -31,6 +34,8 @@ type Room struct {
 	JoinErrorSent map[int]bool
 
 	Words []string
+	Spy   string
+	Done  chan<- struct{}
 
 	Votes map[string]int
 }
@@ -79,19 +84,34 @@ func (r *Room) Created() {
 
 // CountToStart conts 30 seconds then start the game
 func (r *Room) CountToStart() {
-	tick := time.NewTicker(1 * time.Second)
 	count := 0
 
+	reportChan := make(chan message.Response)
+	r.SendChan <- message.Request{
+		Chattable: tgbotapi.NewMessage(
+			r.ChatID,
+			fmt.Sprintf("%d sec left to join", JoinDuration),
+		),
+		Report: reportChan,
+	}
+	id := (<-reportChan).Message.MessageID
+
+	tick := time.NewTicker(1 * time.Second)
+
 	for range tick.C {
+		count++
 		if count%10 == 0 {
 			r.SendChan <- message.Request{
-				Chattable: tgbotapi.NewMessage(
-					r.ChatID,
-					fmt.Sprintf("%d sec left to join", JoinDuration-count),
-				),
+				Chattable: tgbotapi.EditMessageTextConfig{
+					BaseEdit: tgbotapi.BaseEdit{
+						ChatID:    r.ChatID,
+						MessageID: id,
+					},
+					Text: fmt.Sprintf("%d sec left to join", JoinDuration-count),
+				},
 			}
 		}
-		count++
+
 		if count == JoinDuration {
 			tick.Stop()
 			break
@@ -113,6 +133,8 @@ func (r *Room) Inform() {
 	spy := rand.Intn(len(r.Members))
 	index := rand.Intn(len(r.Words))
 	word := r.Words[index]
+
+	r.Spy = r.Members[spy].Name
 
 	for i := range r.Members {
 		word := word
@@ -138,7 +160,15 @@ func (r *Room) CountToVote() {
 	tick := time.NewTicker(1 * time.Minute)
 	count := 0
 
+	r.SendChan <- message.Request{
+		Chattable: tgbotapi.NewMessage(
+			r.ChatID,
+			fmt.Sprintf("%d min left to discuss", DiscussionDuration),
+		),
+	}
+
 	for range tick.C {
+		count++
 		r.SendChan <- message.Request{
 			Chattable: tgbotapi.NewMessage(
 				r.ChatID,
@@ -146,7 +176,6 @@ func (r *Room) CountToVote() {
 			),
 		}
 
-		count++
 		if count == DiscussionDuration {
 			tick.Stop()
 			break
@@ -162,6 +191,56 @@ func (r *Room) CountToVote() {
 	r.SendChan <- message.Request{
 		Chattable: voteMsg,
 	}
+
+	r.CountToEnd()
+}
+
+// CountToEnd count 3 minutes then end the game
+func (r *Room) CountToEnd() {
+	tick := time.NewTicker(1 * time.Minute)
+	count := 0
+
+	r.SendChan <- message.Request{
+		Chattable: tgbotapi.NewMessage(
+			r.ChatID,
+			fmt.Sprintf("%d min left to vote", VoteDuration),
+		),
+	}
+
+	for range tick.C {
+		count++
+		r.SendChan <- message.Request{
+			Chattable: tgbotapi.NewMessage(
+				r.ChatID,
+				fmt.Sprintf("%d min left to vote", VoteDuration-count),
+			),
+		}
+
+		if count == VoteDuration {
+			tick.Stop()
+			break
+		}
+	}
+
+	maxName := ""
+	maxVote := -1
+	for name, vote := range r.Votes {
+		if vote > maxVote {
+			maxVote = vote
+			maxName = name
+		}
+	}
+
+	endMsg := tgbotapi.NewMessage(
+		r.ChatID,
+		fmt.Sprintf("%s is the Spy and you select %s as Spy with %d votes", r.Spy, maxName, maxVote),
+	)
+
+	r.SendChan <- message.Request{
+		Chattable: endMsg,
+	}
+
+	close(r.Done)
 }
 
 // Voted must be called when a member vote for an spy

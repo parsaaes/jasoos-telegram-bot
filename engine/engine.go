@@ -3,12 +3,16 @@ package engine
 import (
 	"log"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/parsaaes/jasoos-telegram-bot/message"
 	"github.com/parsaaes/jasoos-telegram-bot/room"
 	"github.com/sirupsen/logrus"
 )
+
+// RoomTimeout specify a timeout for room removing
+const RoomTimeout = 30 * time.Minute
 
 // Engine is a game engine
 type Engine struct {
@@ -69,14 +73,15 @@ func (e *Engine) handleMessage(msg *tgbotapi.Message) {
 		return
 	}
 
-	switch msg.Command() {
-	case message.New:
+	if msg.Command() == message.New {
 		if _, ok := e.RoomList[msg.Chat.ID]; !ok {
+			done := make(chan struct{})
+
 			r := &room.Room{
 				ChatID: msg.Chat.ID,
 				State:  room.Join,
 				Members: []*room.Member{
-					&room.Member{
+					{
 						Name: msg.From.String(),
 						ID:   msg.From.ID,
 					},
@@ -85,10 +90,13 @@ func (e *Engine) handleMessage(msg *tgbotapi.Message) {
 				JoinErrorSent: make(map[int]bool),
 
 				Words: e.Words,
+				Done:  done,
 
 				Votes: make(map[string]int),
 			}
 			e.RoomList[msg.Chat.ID] = r
+
+			e.RoomTerminator(msg.Chat.ID, done)
 
 			r.Created()
 		}
@@ -125,4 +133,17 @@ func (e *Engine) Sender() {
 			}
 		}
 	}
+}
+
+// RoomTerminator terminates room when its end or timeout
+func (e *Engine) RoomTerminator(id int64, done <-chan struct{}) {
+	tick := time.NewTicker(RoomTimeout)
+
+	select {
+	case <-done:
+	case <-tick.C:
+		tick.Stop()
+	}
+
+	delete(e.RoomList, id)
 }
