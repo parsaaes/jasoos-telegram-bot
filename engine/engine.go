@@ -9,12 +9,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Engine is a game engine
 type Engine struct {
 	Bot      *tgbotapi.BotAPI
 	RoomList map[int64]*room.Room
 	SendChan chan tgbotapi.Chattable
 }
 
+// New creates a new game engine
 func New(token string) (*Engine, error) {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
@@ -28,6 +30,7 @@ func New(token string) (*Engine, error) {
 	}, nil
 }
 
+// Run runs the game engine
 func (e *Engine) Run() {
 	bot := e.Bot
 
@@ -41,46 +44,53 @@ func (e *Engine) Run() {
 	u.Timeout = 60
 
 	updates, err := bot.GetUpdatesChan(u)
-
 	if err != nil {
 		logrus.Fatalf("engine: cannot get updates channel: %s", err.Error())
 	}
 
 	for update := range updates {
-
 		if update.CallbackQuery != nil {
-			callback := update.CallbackQuery
-
-			r, ok := e.RoomList[callback.Message.Chat.ID]
-			if ok {
-				switch callback.Data {
-				case message.Join:
-					r.Joined(callback.From, callback.Message)
-				}
-
-			}
+			e.handleCallback(update.CallbackQuery)
 		}
 
 		if update.Message != nil {
-			switch update.Message.Command() {
-			case message.New:
-				if _, ok := e.RoomList[update.Message.Chat.ID]; !ok {
-					r := &room.Room{
-						ChatID: update.Message.Chat.ID,
-						State:  room.Join,
-						Members: []*room.Member{
-							&room.Member{
-								Name: update.Message.From.String(),
-								ID:   update.Message.From.ID,
-							},
-						},
-						SendChan: e.SendChan,
-					}
-					e.RoomList[update.Message.Chat.ID] = r
+			e.handleMessage(update.Message)
+		}
+	}
+}
 
-					r.Created()
-				}
+func (e *Engine) handleMessage(msg *tgbotapi.Message) {
+	if !msg.Chat.IsGroup() && !msg.Chat.IsSuperGroup() {
+		return
+	}
+
+	switch msg.Command() {
+	case message.New:
+		if _, ok := e.RoomList[msg.Chat.ID]; !ok {
+			r := &room.Room{
+				ChatID: msg.Chat.ID,
+				State:  room.Join,
+				Members: []*room.Member{
+					&room.Member{
+						Name: msg.From.String(),
+						ID:   msg.From.ID,
+					},
+				},
+				SendChan: e.SendChan,
 			}
+			e.RoomList[msg.Chat.ID] = r
+
+			r.Created()
+		}
+	}
+}
+
+func (e *Engine) handleCallback(callback *tgbotapi.CallbackQuery) {
+	r, ok := e.RoomList[callback.Message.Chat.ID]
+	if ok {
+		switch callback.Data {
+		case message.Join:
+			r.Joined(callback.From, callback.Message)
 		}
 	}
 }
