@@ -18,12 +18,22 @@ type Member struct {
 	ID   int
 }
 
+type MessageResponse struct {
+	Message tgbotapi.Message
+	Error   error
+}
+
+type MessageRequest struct {
+	Chattable tgbotapi.Chattable
+	Report    chan MessageResponse
+}
+
 // Room is a place for playing
 type Room struct {
 	ChatID   int64
 	State    State
 	Members  []*Member
-	SendChan chan tgbotapi.Chattable
+	SendChan chan MessageRequest
 
 	Words []string
 }
@@ -47,7 +57,9 @@ func (r *Room) Created() {
 	)
 	msg.ReplyMarkup = joinKeyboard()
 
-	r.SendChan <- msg
+	r.SendChan <- MessageRequest{
+		Chattable: msg,
+	}
 
 	go r.CountToStart()
 	r.State = Join
@@ -60,10 +72,12 @@ func (r *Room) CountToStart() {
 
 	for range tick.C {
 		if count%10 == 0 {
-			r.SendChan <- tgbotapi.NewMessage(
-				r.ChatID,
-				fmt.Sprintf("%d sec left to join", JoinDuration-count),
-			)
+			r.SendChan <- MessageRequest{
+				Chattable: tgbotapi.NewMessage(
+					r.ChatID,
+					fmt.Sprintf("%d sec left to join", JoinDuration-count),
+				),
+			}
 		}
 		count++
 		if count == JoinDuration {
@@ -72,10 +86,12 @@ func (r *Room) CountToStart() {
 		}
 	}
 
-	r.SendChan <- tgbotapi.NewMessage(
-		r.ChatID,
-		"Let's play",
-	)
+	r.SendChan <- MessageRequest{
+		Chattable: tgbotapi.NewMessage(
+			r.ChatID,
+			"Let's play",
+		),
+	}
 
 	r.Inform()
 }
@@ -97,7 +113,9 @@ func (r *Room) Inform() {
 			int64(r.Members[i].ID),
 			word,
 		)
-		r.SendChan <- msg
+		r.SendChan <- MessageRequest{
+			Chattable: msg,
+		}
 	}
 }
 
@@ -116,7 +134,7 @@ func (r *Room) Joined(from *tgbotapi.User, base *tgbotapi.Message) {
 		ID:   from.ID,
 	})
 
-	msg := tgbotapi.EditMessageTextConfig{
+	joinedMsg := tgbotapi.EditMessageTextConfig{
 		BaseEdit: tgbotapi.BaseEdit{
 			ChatID:    r.ChatID,
 			MessageID: base.MessageID,
@@ -125,7 +143,16 @@ func (r *Room) Joined(from *tgbotapi.User, base *tgbotapi.Message) {
 	}
 
 	keyboard := joinKeyboard()
-	msg.ReplyMarkup = &keyboard
+	joinedMsg.ReplyMarkup = &keyboard
 
-	r.SendChan <- msg
+	r.SendChan <- MessageRequest{
+		Chattable: joinedMsg,
+	}
+
+	welcomeMsg := tgbotapi.NewMessage(int64(from.ID),
+		fmt.Sprintf("Successfully joined a game in %s. 😀", base.Chat.Title))
+
+	r.SendChan <- MessageRequest{
+		Chattable: welcomeMsg,
+	}
 }
