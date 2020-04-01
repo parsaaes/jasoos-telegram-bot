@@ -135,7 +135,7 @@ func (r *Room) Inform() {
 
 // CountToVote count 3 minutes then start the voting phase
 func (r *Room) CountToVote() {
-	tick := time.NewTicker(3 * time.Minute)
+	tick := time.NewTicker(1 * time.Minute)
 	count := 0
 
 	for range tick.C {
