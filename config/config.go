@@ -3,11 +3,12 @@ package config
 import (
 	"strings"
 
+	"github.com/knadh/koanf/providers/structs"
+
 	"github.com/knadh/koanf"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
-	"github.com/knadh/koanf/providers/structs"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,7 +20,8 @@ const (
 type (
 	// Config holds all configurations
 	Config struct {
-		Token string `koanf:"token"`
+		Token string   `koanf:"token"`
+		Words []string `koanf:"words"`
 	}
 )
 

@@ -5,5 +5,11 @@ package config
 func Default() Config {
 	return Config{
 		Token: "AwesomeBotToken",
+		Words: []string{
+			"Hello",
+			"Home",
+			"Raha",
+			"Room",
+		},
 	}
 }
