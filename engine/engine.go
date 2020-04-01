@@ -14,10 +14,12 @@ type Engine struct {
 	Bot      *tgbotapi.BotAPI
 	RoomList map[int64]*room.Room
 	SendChan chan tgbotapi.Chattable
+
+	Words []string
 }
 
 // New creates a new game engine
-func New(token string) (*Engine, error) {
+func New(token string, words []string) (*Engine, error) {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return &Engine{}, err
@@ -27,6 +29,8 @@ func New(token string) (*Engine, error) {
 		Bot:      bot,
 		RoomList: make(map[int64]*room.Room),
 		SendChan: make(chan tgbotapi.Chattable),
+
+		Words: words,
 	}, nil
 }
 
@@ -77,6 +81,8 @@ func (e *Engine) handleMessage(msg *tgbotapi.Message) {
 					},
 				},
 				SendChan: e.SendChan,
+
+				Words: e.Words,
 			}
 			e.RoomList[msg.Chat.ID] = r
 

@@ -2,6 +2,7 @@ package room
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
@@ -23,6 +24,18 @@ type Room struct {
 	State    State
 	Members  []*Member
 	SendChan chan tgbotapi.Chattable
+
+	Words []string
+}
+
+func joinKeyboard() tgbotapi.InlineKeyboardMarkup {
+	jmsg := message.Join
+	return tgbotapi.NewInlineKeyboardMarkup([]tgbotapi.InlineKeyboardButton{
+		{
+			Text:         "Join",
+			CallbackData: &jmsg,
+		},
+	})
 }
 
 // Created must be called on the room creation
@@ -32,14 +45,7 @@ func (r *Room) Created() {
 		r.ChatID,
 		fmt.Sprintf("A game created by %s.", r.Members[0].Name),
 	)
-
-	jmsg := message.Join
-	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup([]tgbotapi.InlineKeyboardButton{
-		{
-			Text:         "Join",
-			CallbackData: &jmsg,
-		},
-	})
+	msg.ReplyMarkup = joinKeyboard()
 
 	r.SendChan <- msg
 
@@ -62,6 +68,7 @@ func (r *Room) CountToStart() {
 		count++
 		if count == JoinDuration {
 			tick.Stop()
+			break
 		}
 	}
 
@@ -69,6 +76,29 @@ func (r *Room) CountToStart() {
 		r.ChatID,
 		"Let's play",
 	)
+
+	r.Inform()
+}
+
+// Inform is automatically called after the join duration and send the chosen word to members
+func (r *Room) Inform() {
+	spy := rand.Intn(len(r.Members))
+	index := rand.Intn(len(r.Words))
+	word := r.Words[index]
+
+	for i := range r.Members {
+		word := word
+
+		if i == spy {
+			word = "Spy"
+		}
+
+		msg := tgbotapi.NewMessage(
+			int64(r.Members[i].ID),
+			word,
+		)
+		r.SendChan <- msg
+	}
 }
 
 // Joined must be called when a new member joined
@@ -82,7 +112,7 @@ func (r *Room) Joined(from *tgbotapi.User, base *tgbotapi.Message) {
 	}
 
 	r.Members = append(r.Members, &Member{
-		Name: from.UserName,
+		Name: from.String(),
 		ID:   from.ID,
 	})
 
@@ -91,8 +121,11 @@ func (r *Room) Joined(from *tgbotapi.User, base *tgbotapi.Message) {
 			ChatID:    r.ChatID,
 			MessageID: base.MessageID,
 		},
-		Text: fmt.Sprintf("%s\n %s has joined.", base.Text, from.UserName),
+		Text: fmt.Sprintf("%s\n\r- %s has joined.", base.Text, from.String()),
 	}
+
+	keyboard := joinKeyboard()
+	msg.ReplyMarkup = &keyboard
 
 	r.SendChan <- msg
 }
