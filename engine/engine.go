@@ -13,7 +13,7 @@ import (
 type Engine struct {
 	Bot      *tgbotapi.BotAPI
 	RoomList map[int64]*room.Room
-	SendChan chan room.MessageRequest
+	SendChan chan message.Request
 
 	Words []string
 }
@@ -28,7 +28,7 @@ func New(token string, words []string) (*Engine, error) {
 	return &Engine{
 		Bot:      bot,
 		RoomList: make(map[int64]*room.Room),
-		SendChan: make(chan room.MessageRequest),
+		SendChan: make(chan message.Request),
 
 		Words: words,
 	}, nil
@@ -80,7 +80,8 @@ func (e *Engine) handleMessage(msg *tgbotapi.Message) {
 						ID:   msg.From.ID,
 					},
 				},
-				SendChan: e.SendChan,
+				SendChan:      e.SendChan,
+				JoinErrorSent: make(map[int]bool),
 
 				Words: e.Words,
 			}
@@ -104,8 +105,17 @@ func (e *Engine) handleCallback(callback *tgbotapi.CallbackQuery) {
 // Sender ranges over send channel and sends messages
 func (e *Engine) Sender() {
 	for msg := range e.SendChan {
-		if _, err := e.Bot.Send(msg.Chattable); err != nil {
+		responseMsg, err := e.Bot.Send(msg.Chattable)
+
+		if err != nil {
 			logrus.Errorf("engine: cannot send message: %s", err.Error())
+		}
+
+		if msg.Report != nil {
+			msg.Report <- message.Response{
+				Message: responseMsg,
+				Error:   err,
+			}
 		}
 	}
 }

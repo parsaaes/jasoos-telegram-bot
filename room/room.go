@@ -1,6 +1,7 @@
 package room
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"time"
@@ -10,7 +11,7 @@ import (
 )
 
 // JoinDuration in seconds
-const JoinDuration = 30
+const JoinDuration = 60
 
 // Member represents a member of a game room
 type Member struct {
@@ -18,22 +19,13 @@ type Member struct {
 	ID   int
 }
 
-type MessageResponse struct {
-	Message tgbotapi.Message
-	Error   error
-}
-
-type MessageRequest struct {
-	Chattable tgbotapi.Chattable
-	Report    chan MessageResponse
-}
-
 // Room is a place for playing
 type Room struct {
-	ChatID   int64
-	State    State
-	Members  []*Member
-	SendChan chan MessageRequest
+	ChatID        int64
+	State         State
+	Members       []*Member
+	SendChan      chan message.Request
+	JoinErrorSent map[int]bool
 
 	Words []string
 }
@@ -57,7 +49,7 @@ func (r *Room) Created() {
 	)
 	msg.ReplyMarkup = joinKeyboard()
 
-	r.SendChan <- MessageRequest{
+	r.SendChan <- message.Request{
 		Chattable: msg,
 	}
 
@@ -72,7 +64,7 @@ func (r *Room) CountToStart() {
 
 	for range tick.C {
 		if count%10 == 0 {
-			r.SendChan <- MessageRequest{
+			r.SendChan <- message.Request{
 				Chattable: tgbotapi.NewMessage(
 					r.ChatID,
 					fmt.Sprintf("%d sec left to join", JoinDuration-count),
@@ -86,7 +78,7 @@ func (r *Room) CountToStart() {
 		}
 	}
 
-	r.SendChan <- MessageRequest{
+	r.SendChan <- message.Request{
 		Chattable: tgbotapi.NewMessage(
 			r.ChatID,
 			"Let's play",
@@ -113,7 +105,7 @@ func (r *Room) Inform() {
 			int64(r.Members[i].ID),
 			word,
 		)
-		r.SendChan <- MessageRequest{
+		r.SendChan <- message.Request{
 			Chattable: msg,
 		}
 	}
@@ -126,6 +118,21 @@ func (r *Room) Joined(from *tgbotapi.User, base *tgbotapi.Message) {
 	}
 
 	if from == nil || base == nil {
+		return
+	}
+
+	// check if user has started the bot
+	if err := r.welcome(from, base.Chat.Title); err != nil {
+		if _, ok := r.JoinErrorSent[from.ID]; !ok {
+			errorMessage := tgbotapi.NewMessage(r.ChatID, fmt.Sprintf("%s did you start the bot? 🤔", from.String()))
+
+			r.SendChan <- message.Request{
+				Chattable: errorMessage,
+			}
+
+			r.JoinErrorSent[from.ID] = true
+		}
+
 		return
 	}
 
@@ -145,14 +152,25 @@ func (r *Room) Joined(from *tgbotapi.User, base *tgbotapi.Message) {
 	keyboard := joinKeyboard()
 	joinedMsg.ReplyMarkup = &keyboard
 
-	r.SendChan <- MessageRequest{
+	r.SendChan <- message.Request{
 		Chattable: joinedMsg,
 	}
+}
 
+// welcome sends a welcome message to check If use has started the bot
+func (r *Room) welcome(from *tgbotapi.User, title string) error {
 	welcomeMsg := tgbotapi.NewMessage(int64(from.ID),
-		fmt.Sprintf("Successfully joined a game in %s. 😀", base.Chat.Title))
+		fmt.Sprintf("Successfully joined a game in %s. 😀", title))
 
-	r.SendChan <- MessageRequest{
+	joinReportChan := make(chan message.Response)
+	r.SendChan <- message.Request{
 		Chattable: welcomeMsg,
+		Report:    joinReportChan,
 	}
+
+	if report := <-joinReportChan; report.Error != nil {
+		return errors.New("cannot send welcome message")
+	}
+
+	return nil
 }
