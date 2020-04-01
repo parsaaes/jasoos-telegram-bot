@@ -2,6 +2,7 @@ package engine
 
 import (
 	"log"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/parsaaes/jasoos-telegram-bot/message"
@@ -84,6 +85,8 @@ func (e *Engine) handleMessage(msg *tgbotapi.Message) {
 				JoinErrorSent: make(map[int]bool),
 
 				Words: e.Words,
+
+				Votes: make(map[string]int),
 			}
 			e.RoomList[msg.Chat.ID] = r
 
@@ -95,9 +98,13 @@ func (e *Engine) handleMessage(msg *tgbotapi.Message) {
 func (e *Engine) handleCallback(callback *tgbotapi.CallbackQuery) {
 	r, ok := e.RoomList[callback.Message.Chat.ID]
 	if ok {
-		switch callback.Data {
+		args := strings.Fields(callback.Data)
+
+		switch args[0] {
 		case message.Join:
 			r.Joined(callback.From, callback.Message)
+		case message.Vote:
+			r.Voted(callback.From, callback.Message, strings.Join(args[1:], " "))
 		}
 	}
 }
