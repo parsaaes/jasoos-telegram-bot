@@ -42,6 +42,7 @@ type Room struct {
 
 func (r *Room) joinKeyboard() tgbotapi.InlineKeyboardMarkup {
 	jmsg := message.Join
+
 	return tgbotapi.NewInlineKeyboardMarkup([]tgbotapi.InlineKeyboardButton{
 		{
 			Text:         "Join",
@@ -94,6 +95,7 @@ func (r *Room) CountToStart() {
 		),
 		Report: reportChan,
 	}
+
 	id := (<-reportChan).Message.MessageID
 
 	tick := time.NewTicker(1 * time.Second)
@@ -224,6 +226,7 @@ func (r *Room) CountToEnd() {
 
 	maxName := ""
 	maxVote := -1
+
 	for name, vote := range r.Votes {
 		if vote > maxVote {
 			maxVote = vote
@@ -244,6 +247,7 @@ func (r *Room) CountToEnd() {
 }
 
 // Voted must be called when a member vote for an spy
+// nolint: interfacer
 func (r *Room) Voted(from *tgbotapi.User, base *tgbotapi.Message, target string) {
 	if from == nil || base == nil {
 		return
