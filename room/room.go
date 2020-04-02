@@ -281,6 +281,13 @@ func (r *Room) Joined(from *tgbotapi.User, base *tgbotapi.Message) {
 		return
 	}
 
+	// check to not join one person twice
+	for _, member := range r.Members {
+		if member.Name == from.String() {
+			return
+		}
+	}
+
 	// check if user has started the bot
 	if err := r.welcome(from, base.Chat.Title); err != nil {
 		if _, ok := r.JoinErrorSent[from.ID]; !ok {
