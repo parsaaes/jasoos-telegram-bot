@@ -28,6 +28,7 @@ type Member struct {
 // Room is a place for playing
 type Room struct {
 	ChatID        int64
+	Title         string
 	State         State
 	Members       []*Member
 	SendChan      chan message.Request
@@ -38,6 +39,29 @@ type Room struct {
 	Done  chan<- struct{}
 
 	Votes map[string]int
+}
+
+func New(msg *tgbotapi.Message,
+	sendChan chan message.Request, doneChan chan<- struct{},
+	words []string) *Room {
+	return &Room{
+		ChatID: msg.Chat.ID,
+		Title:  msg.Chat.Title,
+		State:  Join,
+		Members: []*Member{
+			{
+				Name: msg.From.String(),
+				ID:   msg.From.ID,
+			},
+		},
+		SendChan:      sendChan,
+		JoinErrorSent: make(map[int]bool),
+
+		Words: words,
+		Done:  doneChan,
+
+		Votes: make(map[string]int),
+	}
 }
 
 func (r *Room) joinKeyboard() tgbotapi.InlineKeyboardMarkup {
@@ -68,10 +92,36 @@ func (r *Room) voteKeyboard() tgbotapi.InlineKeyboardMarkup {
 
 // Created must be called on the room creation
 func (r *Room) Created() {
-	// first member of members slice is a user who creates the game
+	if !(r.State == Join || r.State == CreatorBlocked) {
+		return
+	}
+
+	// check if user has started the bot
+	if err := r.welcome(r.creator().ID, r.Title); err != nil {
+		if _, ok := r.JoinErrorSent[r.creator().ID]; !ok {
+			// only send the warning on the first attempt
+			if r.State == Join {
+				errorMessage := tgbotapi.NewMessage(
+					r.ChatID,
+					fmt.Sprintf("%s did you start the bot? 🤔", r.creator().Name),
+				)
+
+				r.SendChan <- message.Request{
+					Chattable: errorMessage,
+				}
+			}
+
+			r.JoinErrorSent[r.creator().ID] = true
+		}
+
+		r.State = CreatorBlocked
+
+		return
+	}
+
 	msg := tgbotapi.NewMessage(
 		r.ChatID,
-		fmt.Sprintf("A game created by %s.", r.Members[0].Name),
+		fmt.Sprintf("A game created by %s.", r.creator().Name),
 	)
 	msg.ReplyMarkup = r.joinKeyboard()
 
@@ -79,12 +129,13 @@ func (r *Room) Created() {
 		Chattable: msg,
 	}
 
-	go r.CountToStart()
+	go r.countToStart()
+
 	r.State = Join
 }
 
-// CountToStart conts 30 seconds then start the game
-func (r *Room) CountToStart() {
+// countToStart counts 30 seconds then start the game
+func (r *Room) countToStart() {
 	count := 0
 
 	reportChan := make(chan message.Response)
@@ -289,7 +340,7 @@ func (r *Room) Joined(from *tgbotapi.User, base *tgbotapi.Message) {
 	}
 
 	// check if user has started the bot
-	if err := r.welcome(from, base.Chat.Title); err != nil {
+	if err := r.welcome(from.ID, base.Chat.Title); err != nil {
 		if _, ok := r.JoinErrorSent[from.ID]; !ok {
 			errorMessage := tgbotapi.NewMessage(
 				r.ChatID,
@@ -328,9 +379,9 @@ func (r *Room) Joined(from *tgbotapi.User, base *tgbotapi.Message) {
 }
 
 // welcome sends a welcome message to check If use has started the bot
-func (r *Room) welcome(from *tgbotapi.User, title string) error {
+func (r *Room) welcome(id int, title string) error {
 	welcomeMsg := tgbotapi.NewMessage(
-		int64(from.ID),
+		int64(id),
 		fmt.Sprintf("Successfully joined a game in %s. 😀", title),
 	)
 
@@ -345,4 +396,8 @@ func (r *Room) welcome(from *tgbotapi.User, title string) error {
 	}
 
 	return nil
+}
+
+func (r *Room) creator() *Member {
+	return r.Members[0]
 }

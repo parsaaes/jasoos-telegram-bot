@@ -12,4 +12,6 @@ const (
 	Vote
 	// End there is no game in this room
 	End
+	// CreatorBlocked creator didn't started the bot
+	CreatorBlocked
 )

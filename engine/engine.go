@@ -69,35 +69,23 @@ func (e *Engine) Run() {
 }
 
 func (e *Engine) handleMessage(msg *tgbotapi.Message) {
-	if !msg.Chat.IsGroup() && !msg.Chat.IsSuperGroup() {
+	if !(msg.Chat.IsGroup() || msg.Chat.IsSuperGroup()) {
 		return
 	}
 
 	if msg.Command() == message.New {
-		if _, ok := e.RoomList[msg.Chat.ID]; !ok {
+		r, ok := e.RoomList[msg.Chat.ID]
+		if !ok || r.State == room.End {
 			done := make(chan struct{})
 
-			r := &room.Room{
-				ChatID: msg.Chat.ID,
-				State:  room.Join,
-				Members: []*room.Member{
-					{
-						Name: msg.From.String(),
-						ID:   msg.From.ID,
-					},
-				},
-				SendChan:      e.SendChan,
-				JoinErrorSent: make(map[int]bool),
+			newRoom := room.New(msg, e.SendChan, done, e.Words)
 
-				Words: e.Words,
-				Done:  done,
+			e.RoomList[msg.Chat.ID] = newRoom
 
-				Votes: make(map[string]int),
-			}
-			e.RoomList[msg.Chat.ID] = r
+			go e.RoomTerminator(newRoom.ChatID, done)
 
-			go e.RoomTerminator(msg.Chat.ID, done)
-
+			newRoom.Created()
+		} else if r.State == room.CreatorBlocked {
 			r.Created()
 		}
 	}
@@ -137,13 +125,10 @@ func (e *Engine) Sender() {
 
 // RoomTerminator terminates room when its end or timeout
 func (e *Engine) RoomTerminator(id int64, done <-chan struct{}) {
-	tick := time.NewTicker(RoomTimeout)
-
 	select {
 	case <-done:
-	case <-tick.C:
-		tick.Stop()
+	case <-time.After(RoomTimeout):
+		e.RoomList[id].State = room.End
+		delete(e.RoomList, id)
 	}
-
-	delete(e.RoomList, id)
 }
