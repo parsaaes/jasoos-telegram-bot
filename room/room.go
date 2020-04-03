@@ -27,12 +27,12 @@ type Member struct {
 
 // Room is a place for playing
 type Room struct {
-	ChatID        int64
-	Title         string
-	State         State
-	Members       []*Member
-	SendChan      chan message.Request
-	JoinErrorSent map[int]bool
+	ChatID                int64
+	Title                 string
+	State                 State
+	Members               []*Member
+	SendChan              chan message.Request
+	BotStartedWarningSent map[int]bool
 
 	Words []string
 	Spy   string
@@ -54,8 +54,8 @@ func New(msg *tgbotapi.Message,
 				ID:   msg.From.ID,
 			},
 		},
-		SendChan:      sendChan,
-		JoinErrorSent: make(map[int]bool),
+		SendChan:              sendChan,
+		BotStartedWarningSent: make(map[int]bool),
 
 		Words: words,
 		Done:  doneChan,
@@ -98,20 +98,9 @@ func (r *Room) Created() {
 
 	// check if user has started the bot
 	if err := r.welcome(r.creator().ID, r.Title); err != nil {
-		if _, ok := r.JoinErrorSent[r.creator().ID]; !ok {
-			// only send the warning on the first attempt
-			if r.State == Join {
-				errorMessage := tgbotapi.NewMessage(
-					r.ChatID,
-					fmt.Sprintf("%s did you start the bot? 🤔", r.creator().Name),
-				)
-
-				r.SendChan <- message.Request{
-					Chattable: errorMessage,
-				}
-			}
-
-			r.JoinErrorSent[r.creator().ID] = true
+		// only send the warning on the first attempt
+		if _, ok := r.BotStartedWarningSent[r.creator().ID]; !ok {
+			r.botStartedWarning(r.creator().ID, r.creator().Name)
 		}
 
 		r.State = CreatorBlocked
@@ -132,6 +121,19 @@ func (r *Room) Created() {
 	go r.countToStart()
 
 	r.State = Join
+}
+
+func (r *Room) botStartedWarning(id int, name string) {
+	errorMessage := tgbotapi.NewMessage(
+		r.ChatID,
+		fmt.Sprintf("%s did you start the bot? 🤔", name),
+	)
+
+	r.SendChan <- message.Request{
+		Chattable: errorMessage,
+	}
+
+	r.BotStartedWarningSent[id] = true
 }
 
 // countToStart counts 30 seconds then start the game
@@ -341,17 +343,8 @@ func (r *Room) Joined(from *tgbotapi.User, base *tgbotapi.Message) {
 
 	// check if user has started the bot
 	if err := r.welcome(from.ID, base.Chat.Title); err != nil {
-		if _, ok := r.JoinErrorSent[from.ID]; !ok {
-			errorMessage := tgbotapi.NewMessage(
-				r.ChatID,
-				fmt.Sprintf("%s did you start the bot? 🤔", from.String()),
-			)
-
-			r.SendChan <- message.Request{
-				Chattable: errorMessage,
-			}
-
-			r.JoinErrorSent[from.ID] = true
+		if _, ok := r.BotStartedWarningSent[from.ID]; !ok {
+			r.botStartedWarning(from.ID, from.String())
 		}
 
 		return
